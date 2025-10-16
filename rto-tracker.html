@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RTO Compliance Tracker</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; background: white; border-radius: 15px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); overflow: hidden; }
+        .header { background: #2c3e50; color: white; padding: 20px; text-align: center; }
+        .content { padding: 30px; }
+        .month-selector { display: flex; gap: 15px; justify-content: center; margin-bottom: 30px; flex-wrap: wrap; }
+        select, input { padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .stat-card { background: #f8f9fa; padding: 20px; border-radius: 10px; text-align: center; border-left: 5px solid #3498db; }
+        .stat-number { font-size: 2.5em; font-weight: bold; color: #2c3e50; }
+        .stat-label { color: #7f8c8d; margin-top: 5px; }
+        .calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin-bottom: 20px; }
+        .day-header { background: #34495e; color: white; padding: 10px; text-align: center; font-weight: bold; }
+        .day-cell { padding: 10px; text-align: center; border: 1px solid #eee; background: white; cursor: pointer; transition: all 0.2s; min-height: 50px; display: flex; align-items: center; justify-content: center; }
+        .day-cell:hover { background: #ecf0f1; }
+        .day-cell.worked { background: #27ae60; color: white; }
+        .day-cell.worked:hover { background: #229954; }
+        .day-cell.weekend { background: #95a5a6; color: white; cursor: not-allowed; }
+        .day-cell.today { border: 2px solid #e74c3c; }
+        .compliance { text-align: center; padding: 20px; background: #fff3cd; border-radius: 10px; margin: 20px 0; }
+        .compliance.compliant { background: #d4edda; }
+        .compliance.non-compliant { background: #f8d7da; }
+        button { background: #3498db; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 16px; margin: 5px; }
+        button:hover { background: #2980b9; }
+        @media (max-width: 600px) { .stats { grid-template-columns: 1fr; } .month-selector { flex-direction: column; align-items: center; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏢 RTO Compliance Tracker</h1>
+            <p>Track your 3 days/week average compliance</p>
+        </div>
+        <div class="content">
+            <div class="month-selector">
+                <input type="number" id="year" value="2025" min="2020" max="2030" title="Year">
+                <select id="month">
+                    <option value="0">January</option><option value="1">February</option><option value="2">March</option>
+                    <option value="3">April</option><option value="4">May</option><option value="5">June">
+                    <option value="6">July</option><option value="7">August</option><option value="8">September">
+                    <option value="9">October</option><option value="10">November</option><option value="11">December</option>
+                </select>
+                <button onclick="loadMonth()">Load Month</button>
+                <button onclick="resetMonth()">Reset</button>
+            </div>
+
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-number" id="totalDays">0</div>
+                    <div class="stat-label">Business Days</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="workedDays">0</div>
+                    <div class="stat-label">Days Worked</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="daysNeeded">0</div>
+                    <div class="stat-label">More Days Needed</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="weeklyAvg">0</div>
+                    <div class="stat-label">Weekly Avg</div>
+                </div>
+            </div>
+
+            <div class="compliance" id="compliance">
+                <h3 id="complianceText">Loading...</h3>
+            </div>
+
+            <div class="calendar" id="calendar"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentData = JSON.parse(localStorage.getItem('rtoData') || '{}');
+        let currentYear, currentMonth;
+        
+        function getBusinessDays(year, month) {
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            let businessDays = 0;
+            for (let day = 1; day <= daysInMonth; day++) {
+                const date = new Date(year, month, day);
+                if (date.getDay() !== 0 && date.getDay() !== 6) businessDays++;
+            }
+            return businessDays;
+        }
+function getWeeksInMonth(year, month) {
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const lastDay = new Date(year, month, daysInMonth).getDay();
+    
+    // Case 1: Starts on Saturday AND ends on Sunday
+    if (firstDay === 6 && lastDay === 0) {
+        return Math.ceil((daysInMonth - 3) / 7);
+    }
+    // Case 2: Only starts on Saturday
+    else if (firstDay === 6) {
+        return Math.ceil((daysInMonth - 2) / 7) + 1;
+    }
+    // Case 3: Only ends on Sunday
+    else if (lastDay === 0) {
+        return Math.ceil(daysInMonth / 7);
+    }
+    // Case 4: Normal case
+    else {
+        return Math.ceil((daysInMonth + firstDay) / 7);
+    }
+}
+        function loadMonth() {
+            currentYear = parseInt(document.getElementById('year').value);
+            currentMonth = parseInt(document.getElementById('month').value);
+            const key = `${currentYear}-${currentMonth}`;
+            currentData[key] = currentData[key] || {};
+            
+            const totalDays = getBusinessDays(currentYear, currentMonth);
+            const workedDays = Object.values(currentData[key]).filter(d => d).length;
+            const weeks = getWeeksInMonth(currentYear, currentMonth);
+            const targetDays = Math.ceil(weeks * 3);
+            const daysNeeded = Math.max(0, targetDays - workedDays);
+            const weeklyAvg = totalDays > 0 ? (workedDays / weeks).toFixed(1) : 0;
+            const compliance = weeklyAvg >= 3 ? '✅ COMPLIANT' : `⚠️ Need ${daysNeeded} more days`;
+            
+            // Update stats
+            document.getElementById('totalDays').textContent = totalDays;
+            document.getElementById('workedDays').textContent = workedDays;
+            document.getElementById('daysNeeded').textContent = daysNeeded;
+            document.getElementById('weeklyAvg').textContent = weeklyAvg;
+            
+            // Update compliance
+            const complianceEl = document.getElementById('compliance');
+            document.getElementById('complianceText').textContent = compliance;
+            complianceEl.className = `compliance ${weeklyAvg >= 3 ? 'compliant' : 'non-compliant'}`;
+            
+            // Build calendar
+            renderCalendar(currentYear, currentMonth, currentData[key]);
+            localStorage.setItem('rtoData', JSON.stringify(currentData));
+        }
+
+        function renderCalendar(year, month, monthData) {
+            const calendar = document.getElementById('calendar');
+            calendar.innerHTML = '';
+            
+            // Headers
+            ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(day => {
+                const div = document.createElement('div');
+                div.className = 'day-header';
+                div.textContent = day;
+                calendar.appendChild(div);
+            });
+            
+            const today = new Date();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            let firstDay = new Date(year, month, 1).getDay();
+            
+            // Empty cells for calendar alignment
+            for (let i = 0; i < firstDay; i++) {
+                calendar.appendChild(createDayCell('', false));
+            }
+            
+            // Days
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dateStr = day.toString();
+                const isWeekend = new Date(year, month, day).getDay() === 0 || new Date(year, month, day).getDay() === 6;
+                const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === day;
+                const worked = monthData[dateStr];
+                calendar.appendChild(createDayCell(day, !isWeekend, worked, isToday, year, month));
+            }
+        }
+
+        function createDayCell(day, isBusiness, worked, isToday, year, month) {
+            const div = document.createElement('div');
+            div.className = `day-cell ${worked ? 'worked' : ''} ${isToday ? 'today' : ''}`;
+            if (!isBusiness) div.classList.add('weekend');
+            
+            div.textContent = day || '';
+            // ✨ NEW: Toggle on ALL business days (selected OR unselected)
+            if (isBusiness) {
+                div.onclick = () => toggleDay(year, month, day);
+                div.title = worked ? 'Click to UNSELECT' : 'Click to mark as worked';
+            }
+            return div;
+        }
+
+        function toggleDay(year, month, day) {
+            const key = `${year}-${month}`;
+            currentData[key][day] = !currentData[key][day]; // ✨ TOGGLES: true ↔ false
+            loadMonth();
+        }
+
+        function resetMonth() {
+            const key = `${currentYear}-${currentMonth}`;
+            currentData[key] = {};
+            loadMonth();
+        }
+
+        // Load current month on start
+        const now = new Date();
+        document.getElementById('year').value = now.getFullYear();
+        document.getElementById('month').value = now.getMonth();
+        loadMonth();
+    </script>
+</body>
+</html>
